@@ -1,8 +1,6 @@
-import express from "express";
+import { createServer } from "express-zod-api";
 
-const app = express();
-const port = process.env.PORT ?? "4000";
+import config from "./config";
+import routing from "./routing";
 
-app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
-});
+createServer(config, routing);
