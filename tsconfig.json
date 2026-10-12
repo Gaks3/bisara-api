@@ -10,9 +10,7 @@
     "module": "preserve",
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
-    "types": [
-      "node"
-    ]
+    "types": ["node"]
   },
   "include": ["**/*.ts"],
   "exclude": ["dist"]
