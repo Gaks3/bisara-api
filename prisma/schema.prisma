@@ -13,16 +13,29 @@ datasource db {
 }
 
 model User {
-  id                 String             @id
-  name               String
-  email              String
-  emailVerified      Boolean            @default(false)
-  image              String?
+  id            String   @id
+  name          String
+  email         String
+  emailVerified Boolean  @default(false)
+  image         String?
+  username           String?            @unique
+  displayUsername    String?
+  bio                String?
+  city               String?
+  roleTitle          String?            @default("Pembelajar Inklusif")
+  preferences        Json?
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
   sessions           Session[]
   accounts           Account[]
+  exerciseAttempts   ExerciseAttempt[]
+  progress           UserProgress[]
+  score              UserScore?
+  leaderboardEntries LeaderboardEntry[]
+  learningStreak     LearningStreak?
+  streakActivities   StreakActivity[]
+  userAchievements   UserAchievement[]
 
   @@unique([email])
   @@map("user")

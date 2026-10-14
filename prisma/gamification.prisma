@@ -1,0 +1,109 @@
+enum LeaderboardPeriod {
+  DAILY
+  WEEKLY
+  MONTHLY
+  ALL_TIME
+}
+
+model UserProgress {
+  id                 String        @id @default(cuid())
+  userId             String
+  levelId            String
+  lessonId           String?
+  completedMaterials Int           @default(0)
+  completedExercises Int           @default(0)
+  totalExercises     Int           @default(0)
+  score              Int           @default(0)
+  progressPercent    Float         @default(0)
+  completedAt        DateTime?
+  lastActivityAt     DateTime?
+  user               User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  level              LearningLevel @relation(fields: [levelId], references: [id], onDelete: Cascade)
+  lesson             Lesson?       @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  @@unique([userId, levelId, lessonId])
+  @@index([userId, levelId])
+  @@map("user_progress")
+}
+
+model UserScore {
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  totalScore Int      @default(0)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  updatedAt  DateTime @updatedAt
+
+  @@map("user_score")
+}
+
+model LeaderboardEntry {
+  id          String            @id @default(cuid())
+  userId      String
+  period      LeaderboardPeriod
+  periodStart DateTime
+  periodEnd   DateTime?
+  score       Int               @default(0)
+  rank        Int?
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@unique([userId, period, periodStart])
+  @@index([period, periodStart, score])
+  @@map("leaderboard_entry")
+}
+
+model LearningStreak {
+  id               String           @id @default(cuid())
+  userId           String           @unique
+  currentDays      Int              @default(0)
+  longestDays      Int              @default(0)
+  lastActivityDate DateTime?
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activities       StreakActivity[]
+  updatedAt        DateTime         @updatedAt
+
+  @@map("learning_streak")
+}
+
+model StreakActivity {
+  id           String         @id @default(cuid())
+  userId       String
+  streakId     String
+  activityDate DateTime
+  minutes      Int            @default(0)
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  streak       LearningStreak @relation(fields: [streakId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, activityDate])
+  @@index([streakId, activityDate])
+  @@map("streak_activity")
+}
+
+model Achievement {
+  id          String            @id @default(cuid())
+  code        String            @unique
+  name        String
+  description String
+  icon        String?
+  iconUrl     String?
+  requirement Json?
+  userAwards  UserAchievement[]
+
+  @@map("achievement")
+}
+
+model UserAchievement {
+  id            String      @id @default(cuid())
+  userId        String
+  achievementId String
+  awardedAt     DateTime    @default(now())
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement   Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, achievementId])
+  @@index([achievementId])
+  @@map("user_achievement")
+}

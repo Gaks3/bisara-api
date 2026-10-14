@@ -1,0 +1,92 @@
+enum ExerciseType {
+  GUESS_MOVEMENT
+  GUESS_MEANING
+  AI_PRACTICE
+}
+
+enum AttemptStatus {
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+model Exercise {
+  id           String            @id @default(cuid())
+  levelId      String
+  lessonId     String
+  type         ExerciseType
+  prompt       String
+  instruction  String?
+  mediaUrl     String?
+  signId       String?
+  maxScore     Int               @default(100)
+  passingScore Int               @default(70)
+  order        Int               @default(0)
+  isPublished  Boolean           @default(false)
+  level        LearningLevel     @relation(fields: [levelId], references: [id], onDelete: Cascade)
+  lesson       Lesson            @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  sign         Sign?             @relation(fields: [signId], references: [id], onDelete: SetNull)
+  options      ExerciseOption[]
+  cvConfig     CvExerciseConfig?
+  attempts     ExerciseAttempt[]
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@index([levelId, order])
+  @@index([lessonId, type])
+  @@index([signId])
+  @@map("exercise")
+}
+
+model ExerciseOption {
+  id         String   @id @default(cuid())
+  exerciseId String
+  signId     String?
+  label      String
+  isCorrect  Boolean  @default(false)
+  order      Int      @default(0)
+  exercise   Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+  sign       Sign?    @relation(fields: [signId], references: [id], onDelete: SetNull)
+
+  @@index([exerciseId, order])
+  @@index([signId])
+  @@map("exercise_option")
+}
+
+model CvExerciseConfig {
+  id                  String   @id @default(cuid())
+  exerciseId          String   @unique
+  targetSignId        String
+  confidenceThreshold Float    @default(0.85)
+  holdTimeMs          Int      @default(1500)
+  detectionMode       String   @default("HAND_POSITION")
+  exercise            Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+  targetSign          Sign     @relation(fields: [targetSignId], references: [id], onDelete: Restrict)
+
+  @@index([targetSignId])
+  @@map("cv_exercise_config")
+}
+
+model ExerciseAttempt {
+  id             String        @id @default(cuid())
+  userId         String
+  exerciseId     String
+  detectedSignId String?
+  status         AttemptStatus @default(IN_PROGRESS)
+  score          Int           @default(0)
+  accuracy       Float?
+  durationMs     Int?
+  selectedOption String?
+  feedback       String?
+  detectionData  Json?
+  startedAt      DateTime      @default(now())
+  completedAt    DateTime?
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercise       Exercise      @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+  detectedSign   Sign?         @relation(fields: [detectedSignId], references: [id], onDelete: SetNull)
+
+  @@index([userId, startedAt])
+  @@index([exerciseId])
+  @@index([detectedSignId])
+  @@map("exercise_attempt")
+}

@@ -1,0 +1,121 @@
+enum LearningCategoryType {
+  ALPHABET
+  NUMBER
+  VOCABULARY
+}
+
+enum MaterialType {
+  TEXT
+  IMAGE
+  VIDEO
+  SIGN
+}
+
+model LearningLevel {
+  id          String         @id @default(cuid())
+  code        Int            @unique
+  title       String
+  description String?
+  order       Int
+  isPublished Boolean        @default(false)
+  lessons     Lesson[]
+  exercises   Exercise[]
+  progress    UserProgress[]
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([order])
+  @@map("learning_level")
+}
+
+model LearningCategory {
+  id          String               @id @default(cuid())
+  type        LearningCategoryType
+  name        String
+  slug        String               @unique
+  description String?
+  icon        String?
+  order       Int                  @default(0)
+  lessons     Lesson[]
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  @@index([type, order])
+  @@map("learning_category")
+}
+
+model Lesson {
+  id          String             @id @default(cuid())
+  levelId     String
+  categoryId  String
+  title       String
+  slug        String             @unique
+  description String?
+  order       Int                @default(0)
+  isPublished Boolean            @default(false)
+  level       LearningLevel      @relation(fields: [levelId], references: [id], onDelete: Cascade)
+  category    LearningCategory   @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  materials   LearningMaterial[]
+  exercises   Exercise[]
+  progress    UserProgress[]
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@index([levelId, order])
+  @@index([categoryId])
+  @@map("lesson")
+}
+
+model LearningMaterial {
+  id        String       @id @default(cuid())
+  lessonId  String
+  signId    String?
+  type      MaterialType
+  title     String
+  content   String?
+  mediaUrl  String?
+  score     Int          @default(0)
+  order     Int          @default(0)
+  lesson    Lesson       @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  sign      Sign?        @relation(fields: [signId], references: [id], onDelete: SetNull)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@index([lessonId, order])
+  @@index([signId])
+  @@map("learning_material")
+}
+
+model Sign {
+  id          String             @id @default(cuid())
+  code        String             @unique
+  word        String
+  meaning     String
+  description String?
+  difficulty  Int                @default(1)
+  media       SignMedia[]
+  materials   LearningMaterial[]
+  options     ExerciseOption[]
+  targetForCv CvExerciseConfig[]
+  attempts    ExerciseAttempt[]
+  exercises   Exercise[]
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@index([word])
+  @@map("sign")
+}
+
+model SignMedia {
+  id        String   @id @default(cuid())
+  signId    String
+  type      String
+  url       String
+  thumbnail String?
+  duration  Int?
+  sign      Sign     @relation(fields: [signId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([signId])
+  @@map("sign_media")
+}
