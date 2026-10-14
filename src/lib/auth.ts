@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
-import { openAPI } from "better-auth/plugins";
+import { openAPI, username } from "better-auth/plugins";
 
 import { db } from "./db";
 
@@ -33,20 +33,10 @@ export const auth = betterAuth({
     cookiePrefix: "auth",
     useSecureCookies: process.env.NODE_ENV === "production",
   },
-  appName: "Goldy Outfit",
+  appName: "Bisara",
   baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:4000",
   database: prismaAdapter(db, { provider: "postgresql" }),
   disabledPaths: [
-    "/sign-in/email",
-    "/sign-up/email",
-    "/forget-password",
-    "/reset-password",
-    "/reset-password/:token",
-    "/request-password-reset",
-    "/verify-email",
-    "/send-verification-email",
-    "/change-email",
-    "/change-password",
     "/delete-user",
     "/delete-user/callback",
     "/link-social",
@@ -54,12 +44,13 @@ export const auth = betterAuth({
   ],
   emailAndPassword: {
     enabled: true,
-    requireEmailVerification: true,
+    requireEmailVerification: false,
   },
   onAPIError: {
     errorURL: `${FRONTEND_URL}/auth/error`,
   },
   plugins: [
+    username(),
     openAPI({
       disableDefaultReference: true,
     }),
