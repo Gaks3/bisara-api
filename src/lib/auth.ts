@@ -3,6 +3,12 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import { openAPI, username } from "better-auth/plugins";
 
 import { db } from "./db";
+import {
+  email,
+  EMAIL_FROM,
+  RESEND_PASSWORD_RESET_TEMPLATE_ID,
+  RESEND_VERIFICATION_TEMPLATE_ID,
+} from "./email";
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
@@ -44,7 +50,49 @@ export const auth = betterAuth({
   ],
   emailAndPassword: {
     enabled: true,
-    requireEmailVerification: false,
+    requireEmailVerification: true,
+    // eslint-disable-next-line @typescript-eslint/require-await
+    sendResetPassword: async ({ url, user }) => {
+      void email.emails.send({
+        from: EMAIL_FROM,
+        subject: "Reset Password Anda",
+        template: {
+          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+          id: RESEND_PASSWORD_RESET_TEMPLATE_ID!,
+          variables: {
+            company_address: "Team 19, PAB Infinite",
+            company_name: "Bisara",
+            link_expiry: "24 jam",
+            name: user.name,
+            reset_url: url,
+          },
+        },
+        to: user.email,
+      });
+    },
+  },
+  emailVerification: {
+    autoSignInAfterVerification: true,
+    sendOnSignIn: true,
+    // eslint-disable-next-line @typescript-eslint/require-await
+    sendVerificationEmail: async ({ url, user }) => {
+      void email.emails.send({
+        from: EMAIL_FROM,
+        subject: "Verifikasi Email Anda",
+        template: {
+          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+          id: RESEND_VERIFICATION_TEMPLATE_ID!,
+          variables: {
+            company_address: "Team 19, PAB Infinite",
+            company_name: "Bisara",
+            link_expiry: "24 jam",
+            name: user.name,
+            verification_url: url,
+          },
+        },
+        to: user.email,
+      });
+    },
   },
   onAPIError: {
     errorURL: `${FRONTEND_URL}/auth/error`,
