@@ -1,3 +1,5 @@
+import "dotenv/config";
+
 import { db } from "../src/lib/db";
 
 // ============================================================
@@ -31,7 +33,7 @@ const VIDEOS = {
   angka: ASSETS.videos.angka1,
   angka1: ASSETS.videos.angka1,
   angka2: ASSETS.videos.angka2,
-  hari: ASSETS.videos.hurufB,
+  hari: ASSETS.videos.hari,
   huruf: ASSETS.videos.hurufA,
   hurufA: ASSETS.videos.hurufA,
   hurufB: ASSETS.videos.hurufB,

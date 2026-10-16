@@ -104,9 +104,6 @@ export const auth = betterAuth({
       });
     },
   },
-  onAPIError: {
-    errorURL: `${FRONTEND_URL}/auth/error`,
-  },
   plugins: [
     username(),
     openAPI({

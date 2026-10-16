@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "tsx --watch --env-file .env src/index.ts",
-    "start": "node --env-file .env dist/index.js",
-    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/index.js",
+    "start:env": "node --env-file .env dist/index.js",
+    "build": "tsc -p tsconfig.build.json --noEmit && esbuild src/index.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/index.js && esbuild prisma/seed.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/seed.js",
     "type-check": "tsc --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint --fix .",
@@ -17,7 +18,9 @@
     "test:ui": "vitest --ui",
     "coverage": "vitest run --coverage",
     "prepare": "husky",
-    "seed": "tsx --env-file .env prisma/seed.ts",
+    "seed": "node dist/seed.js",
+    "seed:ts": "tsx --env-file .env prisma/seed.ts",
+    "seed:env": "node --env-file .env dist/seed.js",
     "contract:emit": "prisma contract emit"
   },
   "dependencies": {
@@ -27,11 +30,14 @@
     "better-auth": "^1.7.7",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
+    "dotenv": "^18.0.7",
     "express": "^5.3.0",
     "express-zod-api": "^29.8.2",
     "http-errors": "^2.0.1",
     "pg": "^8.23.1",
+    "prisma": "^7.10.0",
     "resend": "^6.33.0",
+    "tsx": "^4.23.15",
     "zod": "^4.6.5"
   },
   "devDependencies": {
@@ -44,14 +50,12 @@
     "@types/node": "^26.6.4",
     "@vitest/coverage-v8": "^5.0.3",
     "@vitest/eslint-plugin": "^1.6.27",
-    "dotenv": "^18.0.7",
+    "esbuild": "^0.28.2",
     "eslint": "^10.12.0",
     "eslint-plugin-perfectionist": "^5.12.1",
     "husky": "^9.1.7",
     "lint-staged": "^17.6.0",
     "prettier": "^3.9.9",
-    "prisma": "^7.10.0",
-    "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.71.1",
     "vitest": "^5.0.3"

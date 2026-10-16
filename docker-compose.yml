@@ -1,0 +1,68 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: bisara-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-bisara}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bisara_secret_password}
+      POSTGRES_DB: ${POSTGRES_DB:-bisara_db}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bisara} -d ${POSTGRES_DB:-bisara_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - bisara-network
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bisara-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 4000
+      LOGGER_LEVEL: ${LOGGER_LEVEL:-info}
+      # Koneksi ke database PostgreSQL di dalam jaringan Docker
+      DATABASE_URL: postgres://${POSTGRES_USER:-bisara}:${POSTGRES_PASSWORD:-bisara_secret_password}@postgres:5432/${POSTGRES_DB:-bisara_db}?sslmode=disable
+      # Better Auth & Domain
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-bisara_default_secret_key_change_me_in_production_32chars}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:4000}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      # Frontend & URL publik
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      FRONTEND_ERROR_PATH: ${FRONTEND_ERROR_PATH:-/auth/error}
+      BASE_DOMAIN: ${BASE_DOMAIN:-http://localhost:4000}
+      # Resend Email Configuration
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_VERIFICATION_TEMPLATE_ID: ${RESEND_VERIFICATION_TEMPLATE_ID:-email-verification}
+      RESEND_PASSWORD_RESET_TEMPLATE_ID: ${RESEND_PASSWORD_RESET_TEMPLATE_ID:-reset-password}
+      EMAIL_FROM: ${EMAIL_FROM:-Bisara <noreply@bisara.web.id>}
+      # Jalankan seed data otomatis saat container pertama kali dinyalakan (true / false)
+      AUTO_SEED: ${AUTO_SEED:-true}
+    ports:
+      - "${PORT:-4000}:4000"
+    volumes:
+      # Mount folder public agar aset gambar & video dapat diakses dan diperbarui secara langsung
+      - ./public:/app/public
+    networks:
+      - bisara-network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  bisara-network:
+    driver: bridge
