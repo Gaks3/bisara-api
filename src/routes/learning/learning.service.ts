@@ -70,9 +70,31 @@ export const learningService = {
     if (!exercise) throw createHttpError(404, "Exercise not found");
 
     return db.$transaction(async (transaction) => {
-      const awardedScore =
+      // 1. Raw score achieved in this attempt
+      const attemptScore =
         input.status === "COMPLETED"
           ? Math.min(input.score, exercise.maxScore)
+          : 0;
+
+      // 2. High-Score Delta (Skema 2): Find previous best score for this exercise
+      const previousAttempts = await transaction.exerciseAttempt.findMany({
+        select: { score: true },
+        where: {
+          exerciseId: input.exerciseId,
+          status: "COMPLETED",
+          userId,
+        },
+      });
+
+      const previousBestScore =
+        previousAttempts.length > 0
+          ? Math.max(...previousAttempts.map((a) => a.score))
+          : 0;
+
+      // Only award the score difference if current score is higher than previous best
+      const scoreDelta =
+        input.status === "COMPLETED"
+          ? Math.max(0, attemptScore - previousBestScore)
           : 0;
 
       const attempt = await transaction.exerciseAttempt.create({
@@ -81,24 +103,34 @@ export const learningService = {
           completedAt: new Date(),
           detectedSignId: input.detectedSignId,
           detectionData: input.detectionData as
-            | Prisma.InputJsonValue
-            | undefined,
+            Prisma.InputJsonValue | undefined,
           durationMs: input.durationMs,
           exerciseId: input.exerciseId,
           feedback: input.feedback,
-          score: awardedScore,
+          score: attemptScore,
           selectedOption: input.selectedOption,
           status: input.status,
           userId,
         },
       });
 
-      const score = await transaction.userScore.upsert({
-        create: { totalScore: awardedScore, userId },
-        select: { totalScore: true },
-        update: { totalScore: { increment: awardedScore } },
-        where: { userId },
-      });
+      // eslint-disable-next-line
+      let finalTotalScore = 0;
+      if (scoreDelta > 0) {
+        const score = await transaction.userScore.upsert({
+          create: { totalScore: scoreDelta, userId },
+          select: { totalScore: true },
+          update: { totalScore: { increment: scoreDelta } },
+          where: { userId },
+        });
+        finalTotalScore = score.totalScore;
+      } else {
+        const currentScore = await transaction.userScore.findUnique({
+          select: { totalScore: true },
+          where: { userId },
+        });
+        finalTotalScore = currentScore?.totalScore ?? 0;
+      }
 
       let updatedStreak = await transaction.learningStreak.findUnique({
         where: { userId },
@@ -157,12 +189,18 @@ export const learningService = {
           const currentDays =
             streakRecord.lastActivityDate?.getTime() === previousDate.getTime()
               ? streakRecord.currentDays + 1
-              : streakRecord.lastActivityDate?.getTime() === activityDate.getTime()
+              : streakRecord.lastActivityDate?.getTime() ===
+                  activityDate.getTime()
                 ? streakRecord.currentDays
                 : 1;
 
           await transaction.streakActivity.create({
-            data: { activityDate, minutes: activeMinutes, streakId: streakRecord.id, userId },
+            data: {
+              activityDate,
+              minutes: activeMinutes,
+              streakId: streakRecord.id,
+              userId,
+            },
           });
 
           updatedStreak = await transaction.learningStreak.update({
@@ -175,8 +213,8 @@ export const learningService = {
           });
         }
 
-        // 2. Update Leaderboard Entries
-        if (awardedScore > 0) {
+        // 2. Update Leaderboard Entries (only if new XP is awarded via scoreDelta)
+        if (scoreDelta > 0) {
           for (const period of [
             "ALL_TIME",
             "DAILY",
@@ -187,10 +225,10 @@ export const learningService = {
               create: {
                 period,
                 periodStart: periodStart(period),
-                score: awardedScore,
+                score: scoreDelta,
                 userId,
               },
-              update: { score: { increment: awardedScore } },
+              update: { score: { increment: scoreDelta } },
               where: {
                 userId_period_periodStart: {
                   period,
@@ -203,42 +241,37 @@ export const learningService = {
         }
 
         // 3. Update User Progress
-        const [totalExercises, completedExercises, completedScore] =
-          await Promise.all([
-            transaction.exercise.count({
-              where: { isPublished: true, lessonId: exercise.lessonId },
-            }),
-            transaction.exerciseAttempt.findMany({
-              distinct: ["exerciseId"],
-              select: { exerciseId: true },
-              where: {
-                exercise: { lessonId: exercise.lessonId },
-                status: "COMPLETED",
-                userId,
-              },
-            }),
-            transaction.exerciseAttempt.aggregate({
-              _sum: { score: true },
-              where: {
-                exercise: { lessonId: exercise.lessonId },
-                status: "COMPLETED",
-                userId,
-              },
-            }),
-          ]);
+        const totalExercises = await transaction.exercise.count({
+          where: { isPublished: true, lessonId: exercise.lessonId },
+        });
 
-        const completedCount = completedExercises.length;
+        // Find all completed attempts for exercises in this lesson to get best scores
+        const lessonAttempts = await transaction.exerciseAttempt.findMany({
+          select: { exerciseId: true, score: true },
+          where: {
+            exercise: { lessonId: exercise.lessonId },
+            status: "COMPLETED",
+            userId,
+          },
+        });
+
+        const bestScoresByExercise = new Map<string, number>();
+        for (const att of lessonAttempts) {
+          const currentBest = bestScoresByExercise.get(att.exerciseId) ?? 0;
+          if (att.score > currentBest) {
+            bestScoresByExercise.set(att.exerciseId, att.score);
+          }
+        }
+
+        const completedCount = bestScoresByExercise.size;
+        let lessonScore = 0;
+        for (const best of bestScoresByExercise.values()) {
+          lessonScore += best;
+        }
+
         const progressPercent = totalExercises
           ? Math.round((completedCount / totalExercises) * 100)
           : 0;
-
-        const progressData = {
-          completedExercises: completedCount,
-          lastActivityAt: new Date(),
-          progressPercent,
-          score: completedScore._sum.score ?? 0,
-          totalExercises,
-        };
 
         const existingProgress = await transaction.userProgress.findFirst({
           where: {
@@ -247,6 +280,18 @@ export const learningService = {
             userId,
           },
         });
+
+        const isNewlyCompleted =
+          progressPercent >= 100 && !existingProgress?.completedAt;
+
+        const progressData = {
+          completedExercises: completedCount,
+          lastActivityAt: new Date(),
+          progressPercent,
+          score: lessonScore,
+          totalExercises,
+          ...(isNewlyCompleted ? { completedAt: new Date() } : {}),
+        };
 
         if (existingProgress) {
           await transaction.userProgress.update({
@@ -307,7 +352,8 @@ export const learningService = {
         // AI Detection Achievement (Image 3 & 4)
         if (
           exercise.type === "AI_PRACTICE" &&
-          (input.accuracy ?? 0) >= (exercise.cvConfig?.confidenceThreshold ?? 0.85)
+          (input.accuracy ?? 0) >=
+            (exercise.cvConfig?.confidenceThreshold ?? 0.85)
         ) {
           await checkAndAward("AI_DETEKSI");
         }
@@ -325,7 +371,7 @@ export const learningService = {
 
       return {
         accuracy: attempt.accuracy,
-        awardedXp: awardedScore,
+        awardedXp: scoreDelta,
         feedback: attempt.feedback,
         id: attempt.id,
         newAchievements: newlyUnlockedAchievements,
@@ -340,7 +386,7 @@ export const learningService = {
               longestDays: updatedStreak.longestDays,
             }
           : undefined,
-        totalScore: score.totalScore,
+        totalScore: finalTotalScore,
       };
     });
   },
@@ -349,7 +395,13 @@ export const learningService = {
     const [categories, levels, progress] = await db.$transaction([
       db.learningCategory.findMany({
         orderBy: [{ order: "asc" }, { name: "asc" }],
-        select: { description: true, icon: true, name: true, slug: true, type: true },
+        select: {
+          description: true,
+          icon: true,
+          name: true,
+          slug: true,
+          type: true,
+        },
         where: { lessons: { some: { isPublished: true } } },
       }),
       db.learningLevel.findMany({
