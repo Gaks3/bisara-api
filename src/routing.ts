@@ -1,4 +1,4 @@
-import { Routing } from "express-zod-api";
+import { Routing, ServeStatic } from "express-zod-api";
 
 import { getSignDetail, listSigns } from "@/routes/dictionary/dictionary.routes";
 import {
@@ -14,6 +14,12 @@ import {
 import { getProfile, updateProfile } from "@/routes/profile/profile.routes";
 
 const routing: Routing = {
+  // Serves files from ./public directory at /assets/*
+  assets: new ServeStatic("public", {
+    dotfiles: "deny",
+    index: false,
+    redirect: false,
+  }),
   api: {
     dashboard,
     dictionary: {

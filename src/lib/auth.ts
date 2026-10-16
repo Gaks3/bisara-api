@@ -37,6 +37,16 @@ export const auth = betterAuth({
   },
   advanced: {
     cookiePrefix: "auth",
+    crossSubDomainCookies: {
+      domain: BASE_DOMAIN,
+      enabled: true,
+    },
+    defaultCookieAttributes: {
+      domain: BASE_DOMAIN,
+      httpOnly: true,
+      sameSite: "none",
+      secure: process.env.NODE_ENV === "production",
+    },
     useSecureCookies: process.env.NODE_ENV === "production",
   },
   appName: "Bisara",

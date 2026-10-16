@@ -1,5 +1,162 @@
 import { db } from "../src/lib/db";
 
+// ============================================================
+// ASET DARI FOLDER PUBLIC (diserve via route /assets/*)
+// ============================================================
+const ASSETS = {
+  images: {
+    angka1: "/assets/tangan-angka-1.png",
+    angka2: "/assets/tangan-angka-2.png",
+    hari: "/assets/hari.jpeg",
+    hurufA: "/assets/tangan-huruf-a.png",
+    hurufB: "/assets/tangan-huruf-b.png",
+  },
+  videos: {
+    angka1: "/assets/vidio-angka-1.mp4",
+    angka2: "/assets/vidio-angka-2.mp4",
+    hari: "/assets/hari.mp4",
+    hurufA: "/assets/vidio-huruf-a.mp4",
+    hurufB: "/assets/vidio-huruf-b.mp4",
+  },
+};
+
+const IMAGES = [
+  ASSETS.images.hurufA,
+  ASSETS.images.hurufB,
+  ASSETS.images.angka1,
+  ASSETS.images.angka2,
+];
+
+const VIDEOS = {
+  angka: ASSETS.videos.angka1,
+  angka1: ASSETS.videos.angka1,
+  angka2: ASSETS.videos.angka2,
+  hari: ASSETS.videos.hurufB,
+  huruf: ASSETS.videos.hurufA,
+  hurufA: ASSETS.videos.hurufA,
+  hurufB: ASSETS.videos.hurufB,
+};
+
+const img = (i: number) => IMAGES[i % IMAGES.length] as string;
+
+// ============================================================
+// TIPE & HELPER
+// ============================================================
+type MaterialSeed = {
+  content: string;
+  mediaUrl: string;
+  signCode: string;
+  title: string;
+  type: "SIGN" | "VIDEO";
+};
+
+type QuizSeed = {
+  correctIndex: number;
+  instruction: string;
+  mediaUrl: string;
+  options: { label: string; signCode: string }[];
+  prompt: string;
+  signCode: string;
+};
+
+type AiSeed = {
+  confidenceThreshold: number;
+  instruction: string;
+  passingScore: number;
+  prompt: string;
+  signCode: string;
+};
+
+/**
+ * Hapus lalu buat ulang materi + soal untuk 1 lesson.
+ * Urutan soal: semua kuis dulu (order 1..n), lalu latihan kamera AI (order n+1).
+ * Mengembalikan exercise AI (dipakai untuk demo attempt).
+ */
+async function seedLessonContent(params: {
+  ai: AiSeed;
+  getSign: (code: string) => string;
+  lessonId: string;
+  levelId: string;
+  materials: MaterialSeed[];
+  quizzes: QuizSeed[];
+}) {
+  const { ai, getSign, lessonId, levelId, materials, quizzes } = params;
+
+  // --- Materi ---
+  await db.learningMaterial.deleteMany({ where: { lessonId } });
+
+  for (const [i, m] of materials.entries()) {
+    await db.learningMaterial.create({
+      data: {
+        content: m.content,
+        lessonId,
+        mediaUrl: m.mediaUrl,
+        order: i + 1,
+        score: 10,
+        signId: getSign(m.signCode),
+        title: m.title,
+        type: m.type,
+      },
+    });
+  }
+
+  // --- Soal ---
+  await db.exercise.deleteMany({ where: { lessonId } });
+
+  for (const [i, q] of quizzes.entries()) {
+    const exercise = await db.exercise.create({
+      data: {
+        instruction: q.instruction,
+        isPublished: true,
+        lessonId,
+        levelId,
+        maxScore: 50,
+        mediaUrl: q.mediaUrl,
+        order: i + 1,
+        passingScore: 70,
+        prompt: q.prompt,
+        signId: getSign(q.signCode),
+        type: "GUESS_MEANING",
+      },
+    });
+
+    await db.exerciseOption.createMany({
+      data: q.options.map((opt, idx) => ({
+        exerciseId: exercise.id,
+        isCorrect: idx === q.correctIndex,
+        label: opt.label,
+        order: idx + 1,
+        signId: getSign(opt.signCode),
+      })),
+    });
+  }
+
+  const aiExercise = await db.exercise.create({
+    data: {
+      cvConfig: {
+        create: {
+          confidenceThreshold: ai.confidenceThreshold,
+          detectionMode: "HAND_POSITION",
+          holdTimeMs: 1500,
+          targetSignId: getSign(ai.signCode),
+        },
+      },
+      instruction: ai.instruction,
+      isPublished: true,
+      lessonId,
+      levelId,
+      maxScore: 50,
+      order: quizzes.length + 1,
+      passingScore: ai.passingScore,
+      prompt: ai.prompt,
+      signId: getSign(ai.signCode),
+      type: "AI_PRACTICE",
+    },
+  });
+
+  return aiExercise;
+}
+
 async function main() {
   console.log("🌱 Seeding Bisara database...");
 
@@ -126,22 +283,103 @@ async function main() {
 
   // 4. Create Signs
   const signsData = [
+    // --- Level 1: Huruf ---
     {
       code: "A",
       description:
         "Kepalkan tangan dengan ibu jari berada tegak di samping jari telunjuk.",
       difficulty: 1,
+      imageUrl: ASSETS.images.hurufA,
       meaning: "Huruf A",
-      mediaUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500",
+      videoUrl: ASSETS.videos.hurufA,
       word: "Huruf 'A'",
+    },
+    {
+      code: "B",
+      description:
+        "Rapatkan keempat jari tegak ke atas, ibu jari dilipat di depan telapak.",
+      difficulty: 1,
+      imageUrl: ASSETS.images.hurufB,
+      meaning: "Huruf B",
+      videoUrl: ASSETS.videos.hurufB,
+      word: "Huruf 'B'",
+    },
+    {
+      code: "C",
+      description: "Lengkungkan jari dan ibu jari membentuk huruf C.",
+      difficulty: 1,
+      imageUrl: ASSETS.images.hurufA,
+      meaning: "Huruf C",
+      videoUrl: ASSETS.videos.hurufA,
+      word: "Huruf 'C'",
+    },
+    {
+      code: "D",
+      description: "Telunjuk tegak, jari lain melengkung menyentuh ibu jari.",
+      difficulty: 1,
+      imageUrl: ASSETS.images.hurufB,
+      meaning: "Huruf D",
+      videoUrl: ASSETS.videos.hurufB,
+      word: "Huruf 'D'",
+    },
+
+    // --- Level 2: Angka ---
+    {
+      code: "1",
+      description: "Acungkan jari telunjuk ke atas.",
+      difficulty: 1,
+      imageUrl: ASSETS.images.angka1,
+      meaning: "Angka 1",
+      videoUrl: ASSETS.videos.angka1,
+      word: "SATU",
+    },
+    {
+      code: "2",
+      description: "Acungkan jari telunjuk dan jari tengah.",
+      difficulty: 1,
+      imageUrl: ASSETS.images.angka2,
+      meaning: "Angka 2",
+      videoUrl: ASSETS.videos.angka2,
+      word: "DUA",
+    },
+    {
+      code: "3",
+      description: "Acungkan telunjuk, jari tengah, dan jari manis.",
+      difficulty: 1,
+      imageUrl: ASSETS.images.angka1,
+      meaning: "Angka 3",
+      videoUrl: ASSETS.videos.angka1,
+      word: "TIGA",
+    },
+    {
+      code: "4",
+      description: "Acungkan empat jari, ibu jari dilipat.",
+      difficulty: 2,
+      imageUrl: ASSETS.images.angka2,
+      meaning: "Angka 4",
+      videoUrl: ASSETS.videos.angka2,
+      word: "EMPAT",
+    },
+
+    // --- Level 3: Percakapan ---
+    {
+      code: "HARI",
+      description:
+        "Gerakan tangan membentuk lengkungan dari kiri ke kanan seperti lintasan matahari.",
+      difficulty: 2,
+      imageUrl: ASSETS.images.hari,
+      meaning: "Hari",
+      videoUrl: ASSETS.videos.hari,
+      word: "HARI",
     },
     {
       code: "HALO",
       description:
         "Buka telapak tangan Anda setinggi dada lalu lambaikan perlahan ke samping.",
       difficulty: 1,
+      imageUrl: ASSETS.images.hurufA,
       meaning: "Salam sapaan ramah",
-      mediaUrl: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=500",
+      videoUrl: ASSETS.videos.hurufA,
       word: "HALO",
     },
     {
@@ -149,32 +387,19 @@ async function main() {
       description:
         "Sentuhkan ujung jari tangan kanan ke bibir/dagu, lalu gerakkan tangan ke depan secara terbuka.",
       difficulty: 1,
+      imageUrl: ASSETS.images.hurufB,
       meaning: "Ungkapan terima kasih",
-      mediaUrl: "https://images.unsplash.com/photo-1580894732444-8ecded7900cd?w=500",
+      videoUrl: ASSETS.videos.hurufB,
       word: "TERIMA KASIH",
     },
     {
-      code: "SAPAAN",
-      description: "Gerakan salam hangat dua tangan di dada.",
-      difficulty: 1,
-      meaning: "Sapaan pembuka",
-      mediaUrl: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=500",
-      word: "SAPAAN",
-    },
-    {
-      code: "CINTA",
-      description: "I Love You hand sign (ibu jari, telunjuk, kelingking terbuka).",
-      difficulty: 1,
-      meaning: "Saya Cinta Kamu",
-      mediaUrl: "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=500",
-      word: "SAYA CINTA KAMU",
-    },
-    {
       code: "MAAF",
-      description: "Kepalan tangan memutar melingkar searah jarum jam di depan dada.",
+      description:
+        "Kepalan tangan memutar melingkar searah jarum jam di depan dada.",
       difficulty: 1,
+      imageUrl: ASSETS.images.angka1,
       meaning: "Permohonan maaf",
-      mediaUrl: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=500",
+      videoUrl: ASSETS.videos.angka1,
       word: "MAAF",
     },
   ];
@@ -187,30 +412,62 @@ async function main() {
         description: signItem.description,
         difficulty: signItem.difficulty,
         meaning: signItem.meaning,
-        media: {
-          create: [
-            {
-              duration: 3,
-              thumbnail: signItem.mediaUrl,
-              type: "IMAGE",
-              url: signItem.mediaUrl,
-            },
-          ],
-        },
         word: signItem.word,
       },
       update: {
         description: signItem.description,
+        difficulty: signItem.difficulty,
         meaning: signItem.meaning,
         word: signItem.word,
       },
       where: { code: signItem.code },
     });
+
+    // Hapus dan perbarui SignMedia agar selalu sinkron dengan URL lokal /assets/*
+    await db.signMedia.deleteMany({ where: { signId: sign.id } });
+
+    await db.signMedia.create({
+      data: {
+        duration: 3,
+        signId: sign.id,
+        thumbnail: signItem.imageUrl,
+        type: "IMAGE",
+        url: signItem.imageUrl,
+      },
+    });
+
+    if (signItem.videoUrl) {
+      await db.signMedia.create({
+        data: {
+          duration: 5,
+          signId: sign.id,
+          thumbnail: signItem.imageUrl,
+          type: "VIDEO",
+          url: signItem.videoUrl,
+        },
+      });
+    }
+
     signMap.set(signItem.code, sign.id);
+    signMap.set(signItem.code.toUpperCase(), sign.id);
+    signMap.set(signItem.code.toLowerCase(), sign.id);
+    if (signItem.code === "1") signMap.set("ANGKA_1", sign.id);
+    if (signItem.code === "2") signMap.set("ANGKA_2", sign.id);
+    if (signItem.code === "3") signMap.set("ANGKA_3", sign.id);
+    if (signItem.code === "4") signMap.set("ANGKA_4", sign.id);
+    if (signItem.code === "TERIMA_KASIH") {
+      signMap.set("terima kasih", sign.id);
+      signMap.set("terima_kasih", sign.id);
+    }
   }
 
   const getSign = (code: string) => {
-    const val = signMap.get(code);
+    const val =
+      signMap.get(code) ??
+      signMap.get(code.toUpperCase()) ??
+      signMap.get(code.toLowerCase()) ??
+      signMap.get(code.replace("ANGKA_", "")) ??
+      signMap.get(code.replace(/_/g, " ").toLowerCase());
     if (!val) throw new Error(`Missing sign ${code}`);
     return val;
   };
@@ -219,7 +476,8 @@ async function main() {
   const lesson1 = await db.lesson.upsert({
     create: {
       categoryId: getCategory("abjad"),
-      description: "Materi belajar huruf isyarat dasar BISINDO A-Z secara visual dan interaktif.",
+      description:
+        "Materi belajar huruf isyarat dasar BISINDO A-Z secara visual dan interaktif.",
       isPublished: true,
       levelId: getLevel(1),
       order: 1,
@@ -227,27 +485,11 @@ async function main() {
       title: "Modul Abjad BISINDO A-Z",
     },
     update: {
-      description: "Materi belajar huruf isyarat dasar BISINDO A-Z secara visual dan interaktif.",
+      description:
+        "Materi belajar huruf isyarat dasar BISINDO A-Z secara visual dan interaktif.",
       title: "Modul Abjad BISINDO A-Z",
     },
     where: { slug: "modul-abjad-a-z" },
-  });
-
-  await db.lesson.upsert({
-    create: {
-      categoryId: getCategory("kata-hari"),
-      description: "Belajar salam, ungkapan terima kasih, dan sapaan sehari-hari.",
-      isPublished: true,
-      levelId: getLevel(3),
-      order: 1,
-      slug: "sapaan-salam",
-      title: "Sapaan & Salam Sehari-hari",
-    },
-    update: {
-      levelId: getLevel(3),
-      title: "Sapaan & Salam Sehari-hari",
-    },
-    where: { slug: "sapaan-salam" },
   });
 
   const lessonAngka = await db.lesson.upsert({
@@ -267,113 +509,232 @@ async function main() {
     where: { slug: "angka-dan-hitungan" },
   });
 
-  // 6. Materials for Lesson 1 (Matches Image 2)
-  await db.learningMaterial.deleteMany({ where: { lessonId: lesson1.id } });
-
-  await db.learningMaterial.create({
-    data: {
-      content: "Flashcard interaktif huruf 'A' sesuai standar BISINDO.",
-      lessonId: lesson1.id,
-      mediaUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500",
-      order: 1,
-      score: 10,
-      signId: getSign("A"),
-      title: "Flashcard & Player Isyarat (BISINDO Standar)",
-      type: "SIGN",
-    },
-  });
-
-  await db.learningMaterial.create({
-    data: {
-      content: "Video peraga isyarat gerak tangan TERIMA KASIH dengan opsi perlambat 0.5x.",
-      lessonId: lesson1.id,
-      mediaUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-      order: 2,
-      score: 10,
-      signId: getSign("TERIMA_KASIH"),
-      title: "Video Peraga",
-      type: "VIDEO",
-    },
-  });
-
-  // 7. Exercises for Lesson 1 (Matches Image 2 & 3)
-  await db.exercise.deleteMany({ where: { lessonId: lesson1.id } });
-
-  // Exercise A: Quiz (Tebak Arti)
-  const quizExercise = await db.exercise.create({
-    data: {
-      instruction: "Pilih salah satu arti isyarat yang paling tepat sesuai demonstrasi gestur.",
+  const lessonSapaan = await db.lesson.upsert({
+    create: {
+      categoryId: getCategory("kata-hari"),
+      description: "Belajar kosakata hari dan percakapan sehari-hari.",
       isPublished: true,
-      lessonId: lesson1.id,
-      levelId: getLevel(1),
-      maxScore: 50,
-      mediaUrl: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=500",
+      levelId: getLevel(3),
       order: 1,
-      passingScore: 70,
-      prompt: "Apakah arti gestur isyarat berikut ini?",
-      signId: getSign("HALO"),
-      type: "GUESS_MEANING",
+      slug: "sapaan-salam",
+      title: "Sapaan & Salam Sehari-hari",
     },
+    update: {
+      levelId: getLevel(3),
+      title: "Sapaan & Salam Sehari-hari",
+    },
+    where: { slug: "sapaan-salam" },
   });
 
-  await db.exerciseOption.createMany({
-    data: [
+  // ============================================================
+  // 6. LEVEL 1: Materi (huruf A, huruf B, video huruf A) + Soal
+  //    Soal: kuis huruf A, kuis huruf B, kuis video huruf A, computer vision A
+  // ============================================================
+  const aiExerciseLevel1 = await seedLessonContent({
+    ai: {
+      confidenceThreshold: 0.85,
+      instruction:
+        "Kepalkan tangan dengan ibu jari tegak di samping telunjuk, lalu tahan di depan kamera.",
+      passingScore: 85,
+      prompt: 'Coba peragakan huruf "A" di depan kamera!',
+      signCode: "A",
+    },
+    getSign,
+    lessonId: lesson1.id,
+    levelId: getLevel(1),
+    materials: [
       {
-        exerciseId: quizExercise.id,
-        isCorrect: true,
-        label: "A. Halo / Salam",
-        order: 1,
-        signId: getSign("HALO"),
+        content: "Flashcard interaktif huruf 'A' sesuai standar BISINDO.",
+        mediaUrl: ASSETS.images.hurufA,
+        signCode: "A",
+        title: "Huruf A",
+        type: "SIGN",
       },
       {
-        exerciseId: quizExercise.id,
-        isCorrect: false,
-        label: "B. Saya Cinta Kamu",
-        order: 2,
-        signId: getSign("CINTA"),
+        content: "Flashcard interaktif huruf 'B' sesuai standar BISINDO.",
+        mediaUrl: ASSETS.images.hurufB,
+        signCode: "B",
+        title: "Huruf B",
+        type: "SIGN",
       },
       {
-        exerciseId: quizExercise.id,
-        isCorrect: false,
-        label: "C. Terima Kasih",
-        order: 3,
-        signId: getSign("TERIMA_KASIH"),
+        content: "Video peraga isyarat huruf 'A' dengan opsi perlambat 0.5x.",
+        mediaUrl: ASSETS.videos.hurufA,
+        signCode: "A",
+        title: "Video Huruf A",
+        type: "VIDEO",
+      },
+    ],
+    quizzes: [
+      {
+        correctIndex: 0,
+        instruction: "Pilih huruf yang sesuai dengan isyarat pada gambar.",
+        mediaUrl: ASSETS.images.hurufA,
+        options: [
+          { label: "A. Huruf A", signCode: "A" },
+          { label: "B. Huruf B", signCode: "B" },
+          { label: "C. Huruf C", signCode: "C" },
+          { label: "D. Huruf D", signCode: "D" },
+        ],
+        prompt: "Huruf apakah isyarat berikut ini?",
+        signCode: "A",
       },
       {
-        exerciseId: quizExercise.id,
-        isCorrect: false,
-        label: "D. Maaf",
-        order: 4,
-        signId: getSign("MAAF"),
+        correctIndex: 1,
+        instruction: "Pilih huruf yang sesuai dengan isyarat pada gambar.",
+        mediaUrl: ASSETS.images.hurufB,
+        options: [
+          { label: "A. Huruf A", signCode: "A" },
+          { label: "B. Huruf B", signCode: "B" },
+          { label: "C. Huruf C", signCode: "C" },
+          { label: "D. Huruf D", signCode: "D" },
+        ],
+        prompt: "Huruf apakah isyarat berikut ini?",
+        signCode: "B",
+      },
+      {
+        correctIndex: 2,
+        instruction: "Tonton video peraga lalu pilih huruf yang diperagakan.",
+        mediaUrl: ASSETS.videos.hurufA,
+        options: [
+          { label: "A. Huruf B", signCode: "B" },
+          { label: "B. Huruf C", signCode: "C" },
+          { label: "C. Huruf A", signCode: "A" },
+          { label: "D. Huruf D", signCode: "D" },
+        ],
+        prompt: "Huruf apakah yang diperagakan dalam video?",
+        signCode: "A",
       },
     ],
   });
 
-  // Exercise B: AI Practice (Latihan Kamera AI - Matches Image 3 & Flowchart)
-  const aiExercise = await db.exercise.create({
-    data: {
-      cvConfig: {
-        create: {
-          confidenceThreshold: 0.85,
-          detectionMode: "HAND_POSITION",
-          holdTimeMs: 1500,
-          targetSignId: getSign("HALO"),
-        },
-      },
-      instruction: "Buka telapak tangan Anda setinggi dada lalu lambaikan perlahan ke samping.",
-      isPublished: true,
-      lessonId: lesson1.id,
-      levelId: getLevel(1),
-      maxScore: 50,
-      order: 2,
-      passingScore: 85,
-      prompt: "Coba peragakan kata \"HALO\" di depan kamera!",
-      signId: getSign("HALO"),
-      type: "AI_PRACTICE",
+  // ============================================================
+  // 7. LEVEL 2: Materi (angka 1, angka 2, video angka 1) + Soal
+  //    Soal: kuis angka 1, kuis angka 2, kuis video angka 1, computer vision 1
+  // ============================================================
+  await seedLessonContent({
+    ai: {
+      confidenceThreshold: 0.8,
+      instruction: "Acungkan jari telunjuk ke atas dan tahan di depan kamera.",
+      passingScore: 80,
+      prompt: 'Peragakan angka "1" (SATU) di depan kamera!',
+      signCode: "ANGKA_1",
     },
+    getSign,
+    lessonId: lessonAngka.id,
+    levelId: getLevel(2),
+    materials: [
+      {
+        content: "Flashcard interaktif angka 1 sesuai standar BISINDO.",
+        mediaUrl: ASSETS.images.angka1,
+        signCode: "ANGKA_1",
+        title: "Angka 1",
+        type: "SIGN",
+      },
+      {
+        content: "Flashcard interaktif angka 2 sesuai standar BISINDO.",
+        mediaUrl: ASSETS.images.angka2,
+        signCode: "ANGKA_2",
+        title: "Angka 2",
+        type: "SIGN",
+      },
+      {
+        content: "Video peraga isyarat angka 1 dengan opsi perlambat 0.5x.",
+        mediaUrl: ASSETS.videos.angka1,
+        signCode: "ANGKA_1",
+        title: "Video Angka 1",
+        type: "VIDEO",
+      },
+    ],
+    quizzes: [
+      {
+        correctIndex: 0,
+        instruction: "Lihat gestur jari lalu pilih angka yang sesuai.",
+        mediaUrl: ASSETS.images.angka1,
+        options: [
+          { label: "A. Satu (1)", signCode: "ANGKA_1" },
+          { label: "B. Dua (2)", signCode: "ANGKA_2" },
+          { label: "C. Tiga (3)", signCode: "ANGKA_3" },
+          { label: "D. Empat (4)", signCode: "ANGKA_4" },
+        ],
+        prompt: "Angka berapakah isyarat berikut ini?",
+        signCode: "ANGKA_1",
+      },
+      {
+        correctIndex: 1,
+        instruction: "Lihat gestur jari lalu pilih angka yang sesuai.",
+        mediaUrl: ASSETS.images.angka2,
+        options: [
+          { label: "A. Satu (1)", signCode: "ANGKA_1" },
+          { label: "B. Dua (2)", signCode: "ANGKA_2" },
+          { label: "C. Tiga (3)", signCode: "ANGKA_3" },
+          { label: "D. Empat (4)", signCode: "ANGKA_4" },
+        ],
+        prompt: "Angka berapakah isyarat berikut ini?",
+        signCode: "ANGKA_2",
+      },
+      {
+        correctIndex: 3,
+        instruction: "Tonton video peraga lalu pilih angka yang diperagakan.",
+        mediaUrl: ASSETS.videos.angka1,
+        options: [
+          { label: "A. Dua (2)", signCode: "ANGKA_2" },
+          { label: "B. Tiga (3)", signCode: "ANGKA_3" },
+          { label: "C. Empat (4)", signCode: "ANGKA_4" },
+          { label: "D. Satu (1)", signCode: "ANGKA_1" },
+        ],
+        prompt: "Angka berapakah yang diperagakan dalam video?",
+        signCode: "ANGKA_1",
+      },
+    ],
   });
 
-  // 8. Create Demo User matching Image 4
+  // ============================================================
+  // 8. LEVEL 3: Materi (video hari) + Soal
+  //    Soal: kuis video hari, computer vision hari
+  // ============================================================
+  await seedLessonContent({
+    ai: {
+      confidenceThreshold: 0.85,
+      instruction:
+        "Gerakkan tangan membentuk lengkungan dari kiri ke kanan, lalu tahan di depan kamera.",
+      passingScore: 85,
+      prompt: 'Peragakan kata "HARI" di depan kamera!',
+      signCode: "HARI",
+    },
+    getSign,
+    lessonId: lessonSapaan.id,
+    levelId: getLevel(3),
+    materials: [
+      {
+        content: "Video peraga isyarat kata HARI dengan opsi perlambat 0.5x.",
+        mediaUrl: ASSETS.videos.hari,
+        signCode: "HARI",
+        title: "Video Hari",
+        type: "VIDEO",
+      },
+    ],
+    quizzes: [
+      {
+        correctIndex: 2,
+        instruction:
+          "Tonton video peraga lalu pilih arti isyarat yang paling tepat.",
+        mediaUrl: ASSETS.videos.hari,
+        options: [
+          { label: "A. Halo", signCode: "HALO" },
+          { label: "B. Terima Kasih", signCode: "TERIMA_KASIH" },
+          { label: "C. Hari", signCode: "HARI" },
+          { label: "D. Maaf", signCode: "MAAF" },
+        ],
+        prompt: "Apa arti isyarat yang diperagakan dalam video?",
+        signCode: "HARI",
+      },
+    ],
+  });
+
+  // ============================================================
+  // 9. Create Demo User
+  // ============================================================
   const demoUserId = "user_demo_bisara";
   const demoUser = await db.user.upsert({
     create: {
@@ -382,7 +743,8 @@ async function main() {
       email: "you@bisara.app",
       emailVerified: true,
       id: demoUserId,
-      image: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200",
+      image:
+        "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200",
       name: "You",
       preferences: {
         dailyReminder: true,
@@ -456,7 +818,7 @@ async function main() {
     });
   }
 
-  // 3 / 4 Unlocked Achievements (Master Abjad, Api Konsisten, Teman Inklusif)
+  // Unlocked Achievements (Master Abjad, Api Konsisten, Teman Inklusif)
   const masterAbjad = await db.achievement.findUnique({
     where: { code: "MASTER_ABJAD" },
   });
@@ -486,24 +848,25 @@ async function main() {
     }
   }
 
-  // User Progress for Lessons (50% Selesai)
+  // User Progress Level 1 (2 dari 4 soal = 50%)
   await db.userProgress.upsert({
     create: {
-      completedExercises: 1,
-      completedMaterials: 2,
+      completedExercises: 2,
+      completedMaterials: 3,
       lastActivityAt: new Date(Date.now() - 86400000),
       lessonId: lesson1.id,
       levelId: getLevel(1),
       progressPercent: 50,
-      score: 50,
-      totalExercises: 2,
+      score: 100,
+      totalExercises: 4,
       userId: demoUser.id,
     },
     update: {
-      completedExercises: 1,
+      completedExercises: 2,
+      completedMaterials: 3,
       progressPercent: 50,
-      score: 50,
-      totalExercises: 2,
+      score: 100,
+      totalExercises: 4,
     },
     where: {
       userId_levelId_lessonId: {
@@ -514,7 +877,7 @@ async function main() {
     },
   });
 
-  // User Progress for Level 2 (20% Selesai - Matches Image 2)
+  // User Progress Level 2 (1 dari 4 soal = 25%)
   await db.userProgress.upsert({
     create: {
       completedExercises: 1,
@@ -522,16 +885,17 @@ async function main() {
       lastActivityAt: new Date(Date.now() - 2 * 86400000),
       lessonId: lessonAngka.id,
       levelId: getLevel(2),
-      progressPercent: 20,
-      score: 20,
-      totalExercises: 5,
+      progressPercent: 25,
+      score: 50,
+      totalExercises: 4,
       userId: demoUser.id,
     },
     update: {
       completedExercises: 1,
-      progressPercent: 20,
-      score: 20,
-      totalExercises: 5,
+      completedMaterials: 1,
+      progressPercent: 25,
+      score: 50,
+      totalExercises: 4,
     },
     where: {
       userId_levelId_lessonId: {
@@ -542,22 +906,24 @@ async function main() {
     },
   });
 
-  // Recent Exercise Attempt (Matches Image 3)
+  // Recent Exercise Attempt (latihan kamera AI Level 1 - huruf A)
   await db.exerciseAttempt.create({
     data: {
       accuracy: 0.98,
       completedAt: new Date(),
-      detectedSignId: getSign("HALO"),
+      detectedSignId: getSign("A"),
       durationMs: 4200,
-      exerciseId: aiExercise.id,
-      feedback: "Posisi telapak tangan tepat & irama lambaian stabil.",
+      exerciseId: aiExerciseLevel1.id,
+      feedback: "Posisi tangan tepat & bentuk huruf A stabil.",
       score: 50,
       status: "COMPLETED",
       userId: demoUser.id,
     },
   });
 
-  console.log("✅ Bisara database successfully seeded with UI-matching data!");
+  console.log(
+    "✅ Bisara database successfully seeded with materials & exercises!",
+  );
 }
 
 main()
